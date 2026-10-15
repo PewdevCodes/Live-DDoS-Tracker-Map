@@ -1,88 +1,74 @@
-// ADDED: Import live Cloudflare Radar fetcher
 import { fetchRadarSnapshot } from "../fetch-radar.js";
-
 import {
   buildWeightedPool,
   sampleAttackPair,
 } from "./sampler.js";
-
 import { createEvent } from "./event.js";
 import { getNextDelayMs } from "./timing.js";
+// ADDED: Import WebSocket server factory
+import { createWsServer } from "../realtime/wsServer.js";
 
-// COMMENTED OUT: Static timestamp replaced with dynamic API snapshot timestamp
-// const snapshotUpdatedAt = new Date().toISOString();
+// MODIFIED: Converted to uppercase constants and added server port
+const EVENTS_PER_SECOND = 2;
+const PORT = 8080;
 
-const eventsPerSecond = 2;
-
-// ADDED: Helper function for asynchronous delay pauses
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// COMMENTED OUT: Hardcoded test pairs replaced with live Cloudflare snapshot
-/*
-const pairs = [
-  {
-    originCountryAlpha2: "BR",
-    originCountryName: "Brazil",
-    targetCountryName: "United States",
-    targetCountryAlpha2: "US",
-    value: 9.012713,
-  },
-  {
-    originCountryAlpha2: "RO",
-    originCountryName: "Romania",
-    targetCountryName: "United States",
-    targetCountryAlpha2: "US",
-    value: 3.436308,
-  },
-];
-
-const pool = buildWeightedPool(pairs);
-*/
-
-async function startGenerator() {
-  // ADDED: Fetch API data and build pool dynamically
+// MODIFIED: Renamed function to main()
+// OLD: async function startGenerator() {
+async function main() {
   console.log("Fetching Cloudflare Radar snapshot...");
+
   const snapshot = await fetchRadarSnapshot();
   const pool = buildWeightedPool(snapshot.result.top_0);
   const snapshotUpdatedAt = snapshot.result.meta.lastUpdated;
 
-  // ADDED: Guard clause for empty datasets
   if (pool.length === 0) {
     throw new Error("Radar returned no usable attack pairs.");
   }
 
-  // MODIFIED: Updated startup logging with snapshot metadata
+  // ADDED: Initialize WebSocket server on port 8080
+  const server = createWsServer(PORT);
+
+  // ADDED: Flag and signal handlers for graceful process shutdown
+  let stopping = false;
+  const stop = () => {
+    stopping = true;
+  };
+
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+
   console.log(`Loaded ${pool.length} country pairs.`);
-  console.log(`Source data updated: ${snapshotUpdatedAt}`);
-  console.log(`Average simulated event rate: ${eventsPerSecond}/second`);
   console.log("Events are simulated, not individual observed attacks.");
-  console.log("Press Ctrl+C to stop.\n");
 
-  while (true) {
-    const pair = sampleAttackPair(pool);
+  // ADDED: Wrap execution loop in try...finally to ensure cleanup on exit
+  try {
+    // MODIFIED: Replaced infinite loop `while (true)` with flag check
+    while (!stopping) {
+      const pair = sampleAttackPair(pool);
+      const event = createEvent(pair, snapshotUpdatedAt);
 
-    const event = createEvent(
-      pair,
-      snapshotUpdatedAt
-    );
+      // MODIFIED: Broadcast event over WebSocket server and log concise origin -> target line
+      // OLD: console.log(JSON.stringify(event));
+      server.broadcast(event);
+      console.log(`${event.origin} -> ${event.target}`);
 
-    // MODIFIED: Compact single-line JSON output for streaming
-    // OLD: console.log(JSON.stringify(event, null, 2));
-    console.log(JSON.stringify(event));
-
-    // MODIFIED: Replaced inline Promise/setTimeout with sleep helper
-    /*
-    const delayMs = getNextDelayMs(eventsPerSecond);
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, delayMs);
-    });
-    */
-    await sleep(getNextDelayMs(eventsPerSecond));
+      await sleep(getNextDelayMs(EVENTS_PER_SECOND));
+    }
+  } finally {
+    // ADDED: Clean up signal listeners and close WebSocket server gracefully
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
+    await server.close();
+    console.log("DdosAttackmap stopped.");
   }
 }
 
-startGenerator().catch((error: unknown) => {
-  console.error("Generator failed:", error);
+// MODIFIED: Executing main() instead of startGenerator()
+// OLD: startGenerator().catch((error: unknown) => {
+main().catch((error: unknown) => {
+  console.error("Application failed:", error);
   process.exitCode = 1;
 });
