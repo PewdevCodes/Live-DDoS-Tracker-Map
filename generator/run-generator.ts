@@ -1,3 +1,5 @@
+// ADDED: Import live Cloudflare Radar fetcher
+import { fetchRadarSnapshot } from "../fetch-radar.js";
 
 import {
   buildWeightedPool,
@@ -7,11 +9,17 @@ import {
 import { createEvent } from "./event.js";
 import { getNextDelayMs } from "./timing.js";
 
-const snapshotUpdatedAt = new Date().toISOString();
+// COMMENTED OUT: Static timestamp replaced with dynamic API snapshot timestamp
+// const snapshotUpdatedAt = new Date().toISOString();
+
 const eventsPerSecond = 2;
 
-// Temporary test data.
-// We will replace this with validated Cloudflare data next.
+// ADDED: Helper function for asynchronous delay pauses
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// COMMENTED OUT: Hardcoded test pairs replaced with live Cloudflare snapshot
+/*
 const pairs = [
   {
     originCountryAlpha2: "BR",
@@ -30,10 +38,25 @@ const pairs = [
 ];
 
 const pool = buildWeightedPool(pairs);
+*/
 
 async function startGenerator() {
-  console.log("Simulated event generator started.");
-  console.log(`Average rate: ${eventsPerSecond} events/second`);
+  // ADDED: Fetch API data and build pool dynamically
+  console.log("Fetching Cloudflare Radar snapshot...");
+  const snapshot = await fetchRadarSnapshot();
+  const pool = buildWeightedPool(snapshot.result.top_0);
+  const snapshotUpdatedAt = snapshot.result.meta.lastUpdated;
+
+  // ADDED: Guard clause for empty datasets
+  if (pool.length === 0) {
+    throw new Error("Radar returned no usable attack pairs.");
+  }
+
+  // MODIFIED: Updated startup logging with snapshot metadata
+  console.log(`Loaded ${pool.length} country pairs.`);
+  console.log(`Source data updated: ${snapshotUpdatedAt}`);
+  console.log(`Average simulated event rate: ${eventsPerSecond}/second`);
+  console.log("Events are simulated, not individual observed attacks.");
   console.log("Press Ctrl+C to stop.\n");
 
   while (true) {
@@ -44,13 +67,18 @@ async function startGenerator() {
       snapshotUpdatedAt
     );
 
-    console.log(JSON.stringify(event, null, 2));
+    // MODIFIED: Compact single-line JSON output for streaming
+    // OLD: console.log(JSON.stringify(event, null, 2));
+    console.log(JSON.stringify(event));
 
+    // MODIFIED: Replaced inline Promise/setTimeout with sleep helper
+    /*
     const delayMs = getNextDelayMs(eventsPerSecond);
-
     await new Promise<void>((resolve) => {
       setTimeout(resolve, delayMs);
     });
+    */
+    await sleep(getNextDelayMs(eventsPerSecond));
   }
 }
 
