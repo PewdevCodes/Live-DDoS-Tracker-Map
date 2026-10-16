@@ -62,6 +62,7 @@ export type GlobeConfig = {
   pointLight?: string;
   arcTime?: number;
   arcLength?: number;
+  arcIntensity?: number;
   rings?: number;
   maxRings?: number;
   initialPosition?: {
@@ -139,33 +140,34 @@ export function Globe({ globeConfig, data, rings }: WorldProps) {
     globe
       .hexPolygonsData(countries.features)
       .hexPolygonResolution(3)
-      .hexPolygonMargin(0.7)
+      .hexPolygonMargin(0.42)
       .showAtmosphere(defaultProps.showAtmosphere)
       .atmosphereColor(defaultProps.atmosphereColor)
       .atmosphereAltitude(defaultProps.atmosphereAltitude)
       .hexPolygonColor(() => defaultProps.polygonColor);
 
     globe
-      .arcStartLat((d) => (d as Position).startLat)
-      .arcStartLng((d) => (d as Position).startLng)
-      .arcEndLat((d) => (d as Position).endLat)
-      .arcEndLng((d) => (d as Position).endLng)
-      .arcColor((d) => (d as Position).color)
-      .arcAltitude((d) => (d as Position).arcAlt)
-      .arcStroke((d) => [0.32, 0.28, 0.3][(d as Position).order % 3])
+      .arcStartLat((d: unknown) => (d as Position).startLat)
+      .arcStartLng((d: unknown) => (d as Position).startLng)
+      .arcEndLat((d: unknown) => (d as Position).endLat)
+      .arcEndLng((d: unknown) => (d as Position).endLng)
+      .arcColor((d: unknown) => (d as Position).color)
+      .arcAltitude((d: unknown) => (d as Position).arcAlt)
+      .arcStroke((d: unknown) => [1.15, 1, 1.08][(d as Position).order % 3] * (defaultProps.arcIntensity ?? 1))
+      .arcCurveResolution(64)
       .arcDashLength(defaultProps.arcLength)
       .arcDashInitialGap(() => 0)
-      .arcDashGap(15)
+      .arcDashGap(2.5)
       .arcDashAnimateTime(() => defaultProps.arcTime);
 
     globe
-      .pointColor((d) => (d as { color: string }).color)
-      .pointsMerge(true)
-      .pointAltitude(0.0)
-      .pointRadius(0.6);
+      .pointColor((d: unknown) => (d as { color: string }).color)
+      .pointsMerge(false)
+      .pointAltitude(0.04)
+      .pointRadius(1.15);
 
     globe
-      .ringColor((d) => {
+      .ringColor((d: unknown) => {
         const rgb = hexToRgb((d as RingPoint).color) ?? { r: 255, g: 255, b: 255 };
         return (t: number) => `rgba(${rgb.r},${rgb.g},${rgb.b},${1 - t})`;
       })
@@ -180,6 +182,7 @@ export function Globe({ globeConfig, data, rings }: WorldProps) {
     defaultProps.polygonColor,
     defaultProps.arcLength,
     defaultProps.arcTime,
+    defaultProps.arcIntensity,
     defaultProps.maxRings,
   ]);
 
@@ -230,7 +233,7 @@ export function World(props: WorldProps) {
   const { globeConfig } = props;
   return (
     <Canvas camera={CAMERA}>
-      <fog attach="fog" args={[0xffffff, 400, 2000]} />
+      <fog attach="fog" args={["#070a0f", 500, 1800]} />
       <WebGLRendererConfig />
       <ambientLight color={globeConfig.ambientLight} intensity={0.6} />
       <directionalLight
